@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>La Campana Perduta — Mistero al Monastero</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=VT323&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --stone-dark: #1a1410;
+    --stone-mid: #2d2419;
+    --stone-light: #4a3a28;
+    --mortar: #6b5640;
+    --candle: #ffb347;
+    --candle-warm: #ff8c42;
+    --brass: #b8860b;
+    --gold: #d4af37;
+    --gold-bright: #ffd700;
+    --parchment: #e8d9b8;
+    --parchment-dark: #c4b08a;
+    --ink: #2b1810;
+    --blood: #5c1a1a;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--stone-dark);
+    color: var(--parchment);
+    font-family: 'VT323', monospace;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+    touch-action: manipulation;
+    overscroll-behavior: none;
+  }
+
+  /* Grain texture overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 900;
+    opacity: 0.12;
+    background-image:
+      repeating-linear-gradient(0deg, rgba(0,0,0,0.4) 0, rgba(0,0,0,0.4) 1px, transparent 1px, transparent 3px);
+    mix-blend-mode: multiply;
+  }
+
+  /* Vignette */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 899;
+    background: radial-gradient(ellipse at center, transparent 35%, rgba(0,0,0,0.7) 100%);
+  }
+
+  /* ===================== INTRO SCREEN ===================== */
+  .intro {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background:
+      radial-gradient(ellipse at center, rgba(184,134,11,0.15) 0%, transparent 60%),
+      linear-gradient(to bottom, #0a0612, #1a1410);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 24px;
+    text-align: center;
+    overflow-y: auto;
+    transition: opacity 0.8s ease, visibility 0.8s ease;
+  }
+
+  .intro.hide {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .intro h1 {
+    font-family: 'UnifrakturMaguntia', cursive;
+    font-size: clamp(40px, 11vw, 72px);
+    color: var(--parchment);
+    text-shadow: 3px 3px 0 var(--ink), 0 0 30px rgba(212,175,55,0.4);
+    letter-spacing: 1px;
+    line-height: 1.05;
+    margin-bottom: 6px;
+  }
+
+  .intro .ornament {
+    color: var(--brass);
+    font-size: 28px;
+    margin: 14px 0;
+    letter-spacing: 12px;
+    opacity: 0.7;
+  }
+
+  .intro .lore {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: clamp(16px, 4.5vw, 20px);
+    color: var(--parchment-dark);
+    max-width: 520px;
+    line-height: 1.6;
+    margin-bottom: 28px;
+    padding: 0 8px;
+  }
+
+  .intro .lore strong {
+    color: var(--gold-bright);
+    font-style: normal;
+    font-family: 'UnifrakturMaguntia', cursive;
+    font-weight: normal;
+    font-size: 1.15em;
+  }
+
+  .start-btn {
+    background: var(--stone-mid);
+    color: var(--parchment);
+    border: 2px solid var(--brass);
+    padding: 16px 40px;
+    font-family: 'IM Fell English', serif;
+    font-size: 22px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    transition: all 0.3s ease;
+    position: relative;
+    box-shadow: 0 0 20px rgba(0,0,0,0.6), inset 0 0 20px rgba(184,134,11,0.1);
+  }
+
+  .start-btn:active {
+    background: var(--brass);
+    color: var(--ink);
+    transform: scale(0.97);
+  }
+
+  .tutorial {
+    margin-top: 30px;
+    font-family: 'IM Fell English', serif;
+    font-size: 16px;
+    color: var(--parchment-dark);
+    opacity: 0.8;
+    max-width: 380px;
+    line-height: 1.5;
+  }
+
+  .tutorial-icon {
+    display: inline-block;
+    margin: 0 4px;
+    color: var(--candle);
+    font-size: 18px;
+  }
+
+  /* ===================== GAME UI ===================== */
+  .hud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: linear-gradient(to bottom, rgba(26,20,16,0.95), rgba(26,20,16,0.7) 80%, transparent);
+    padding: env(safe-area-inset-top, 12px) 16px 14px;
+    padding-top: max(12px, env(safe-area-inset-top));
+    pointer-events: none;
+  }
+
+  .hud-inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    pointer-events: auto;
+  }
+
+  .hud-title {
+    font-family: 'UnifrakturMaguntia', cursive;
+    font-size: 22px;
+    color: var(--parchment);
+    text-shadow: 2px 2px 0 var(--ink);
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .hud-stats {
+    background: rgba(232,217,184,0.95);
+    color: var(--ink);
+    padding: 6px 12px;
+    border: 2px solid var(--stone-light);
+    box-shadow: 0 2px 0 var(--stone-dark);
+    font-family: 'IM Fell English', serif;
+    font-size: 15px;
+    font-style: italic;
+    line-height: 1.2;
+    flex-shrink: 0;
+  }
+
+  .hud-stats .count {
+    font-family: 'VT323', monospace;
+    font-style: normal;
+    font-size: 20px;
+    font-weight: bold;
+    color: var(--blood);
+  }
+
+  .reset-btn {
+    background: transparent;
+    color: var(--parchment-dark);
+    border: 1px solid var(--stone-light);
+    padding: 6px 10px;
+    font-family: 'IM Fell English', serif;
+    font-size: 13px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: all 0.2s ease;
+  }
+
+  .reset-btn:active {
+    background: var(--stone-light);
+    color: var(--parchment);
+  }
+
+  /* Narrative banner */
+  .narrative {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 50;
+    background: linear-gradient(to top, rgba(26,20,16,0.97), rgba(26,20,16,0.85) 70%, transparent);
+    padding: 20px 18px max(18px, env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+
+  .narrative-box {
+    background: var(--stone-mid);
+    border: 2px solid var(--stone-light);
+    border-left: 5px solid var(--brass);
+    padding: 12px 16px;
+    font-family: 'IM Fell English', serif;
+    font-size: 17px;
+    line-height: 1.4;
+    color: var(--parchment);
+    min-height: 60px;
+    position: relative;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.6);
+  }
+
+  .narrative-box.toll {
+    animation: parchment-shake 0.5s ease;
+    border-left-color: var(--gold-bright);
+  }
+
+  @keyframes parchment-shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
+  }
+
+  /* ===================== SCENE ===================== */
+  .scene {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    cursor: crosshair;
+  }
+
+  .scene-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(to bottom,
+        #0a0612 0%,
+        #1a0f1a 25%,
+        #2d1810 55%,
+        #1a1410 80%,
+        #0a0806 100%);
+  }
+
+  /* Stars */
+  .stars {
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 10% 8%, #fff, transparent),
+      radial-gradient(1px 1px at 25% 5%, #ffe, transparent),
+      radial-gradient(1px 1px at 38% 12%, #fff, transparent),
+      radial-gradient(1px 1px at 52% 4%, #fff, transparent),
+      radial-gradient(1px 1px at 68% 10%, #ffe, transparent),
+      radial-gradient(1px 1px at 82% 6%, #fff, transparent),
+      radial-gradient(1px 1px at 92% 14%, #fff, transparent),
+      radial-gradient(1px 1px at 15% 18%, #fff, transparent),
+      radial-gradient(1px 1px at 45% 16%, #ffe, transparent),
+      radial-gradient(1px 1px at 75% 20%, #fff, transparent);
+    animation: twinkle 5s infinite;
+    pointer-events: none;
+  }
+
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+
+  .moon {
+    position: absolute;
+    top: 12%;
+    right: 10%;
+    width: 44px;
+    height: 44px;
+    background: radial-gradient(circle at 35% 35%, #f4e9c4, #c9b58a 80%);
+    border-radius: 50%;
+    box-shadow: 0 0 28px rgba(244,233,196,0.4), inset -6px -6px 0 rgba(0,0,0,0.2);
+  }
+
+  /* SVG monastery */
+  .scene-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  /* Bells layer */
+  .bells-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .bell {
+    position: absolute;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: filter 0.3s ease;
+    filter: drop-shadow(0 3px 4px rgba(0,0,0,0.7));
+    transform-origin: top center;
+    /* Bigger touch target for fingers */
+    padding: 6px;
+    margin: -6px;
+  }
+
+  .bell.checked {
+    cursor: default;
+    opacity: 0.32;
+    filter: grayscale(0.8) drop-shadow(0 2px 3px rgba(0,0,0,0.6));
+  }
+
+  .bell.checked .bell-x {
+    opacity: 1;
+  }
+
+  .bell-x {
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .bell.swing svg {
+    animation: bell-swing 0.7s ease-in-out;
+    transform-origin: top center;
+  }
+
+  @keyframes bell-swing {
+    0%, 100% { transform: rotate(0deg); }
+    20% { transform: rotate(-18deg); }
+    50% { transform: rotate(15deg); }
+    80% { transform: rotate(-8deg); }
+  }
+
+  .bell.found {
+    cursor: default;
+    z-index: 12;
+    filter:
+      drop-shadow(0 0 20px var(--gold-bright))
+      drop-shadow(0 0 40px var(--gold))
+      drop-shadow(0 0 60px var(--candle));
+  }
+
+  .bell.found svg {
+    animation: bell-found 1.2s ease-in-out infinite;
+    transform-origin: top center;
+  }
+
+  @keyframes bell-found {
+    0%, 100% { transform: rotate(-12deg) scale(1.25); }
+    50% { transform: rotate(12deg) scale(1.25); }
+  }
+
+  /* Halo glow */
+  .halo {
+    position: absolute;
+    pointer-events: none;
+    z-index: 4;
+    width: 140px;
+    height: 140px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,215,0,0.5) 0%, rgba(255,179,71,0.2) 40%, transparent 70%);
+    animation: halo-pulse 2s ease-in-out infinite;
+    transform: translate(-50%, -50%);
+  }
+
+  @keyframes halo-pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.7; }
+    50% { transform: translate(-50%, -50%) scale(1.5); opacity: 1; }
+  }
+
+  /* Candle flicker spots */
+  .candle-light {
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255,179,71,0.45) 0%, transparent 70%);
+    pointer-events: none;
+    animation: flicker 3s infinite ease-in-out;
+    transform: translate(-50%, -50%);
+  }
+
+  @keyframes flicker {
+    0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(1); }
+    25% { opacity: 0.85; transform: translate(-50%, -50%) scale(0.92); }
+    50% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+    75% { opacity: 0.8; transform: translate(-50%, -50%) scale(0.98); }
+  }
+
+  /* ===================== FRIAR ===================== */
+  .friar {
+    position: absolute;
+    width: 44px;
+    height: 64px;
+    z-index: 8;
+    pointer-events: none;
+    transform: translate(-50%, -85%);
+    transition: left 0.5s linear, top 0.5s linear;
+    filter: drop-shadow(0 4px 4px rgba(0,0,0,0.7));
+  }
+
+  .friar.walking svg {
+    animation: friar-walk 0.4s ease-in-out infinite;
+  }
+
+  @keyframes friar-walk {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+
+  /* Walk target ripple */
+  .ripple {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border: 2px solid var(--candle);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9;
+    transform: translate(-50%, -50%);
+    animation: ripple-fade 0.6s ease-out forwards;
+  }
+
+  @keyframes ripple-fade {
+    0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; }
+  }
+
+  /* ===================== VICTORY ===================== */
+  .victory {
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, rgba(212,175,55,0.3) 0%, rgba(0,0,0,0.92) 70%);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 200;
+    backdrop-filter: blur(4px);
+    text-align: center;
+    padding: 30px 24px;
+  }
+
+  .victory.show {
+    display: flex;
+    animation: fadein 1.2s ease;
+  }
+
+  @keyframes fadein {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .victory h2 {
+    font-family: 'UnifrakturMaguntia', cursive;
+    font-size: clamp(44px, 11vw, 84px);
+    color: var(--gold-bright);
+    text-shadow: 4px 4px 0 var(--ink), 0 0 40px var(--gold);
+    margin-bottom: 18px;
+    line-height: 1;
+    animation: glow 2.5s ease-in-out infinite;
+  }
+
+  @keyframes glow {
+    0%, 100% { text-shadow: 4px 4px 0 var(--ink), 0 0 30px var(--gold); }
+    50% { text-shadow: 4px 4px 0 var(--ink), 0 0 60px var(--gold-bright); }
+  }
+
+  .victory p {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: clamp(17px, 4.5vw, 22px);
+    color: var(--parchment);
+    max-width: 520px;
+    line-height: 1.55;
+    margin-bottom: 16px;
+  }
+
+  .victory .stats-line {
+    font-family: 'VT323', monospace;
+    color: var(--candle);
+    font-size: 22px;
+    font-style: normal;
+    margin-bottom: 26px;
+  }
+
+  /* Tap to walk hint */
+  .walk-hint {
+    position: fixed;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 40;
+    background: rgba(0,0,0,0.7);
+    color: var(--candle);
+    padding: 8px 18px;
+    border: 1px solid var(--brass);
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 15px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+
+  .walk-hint.show {
+    opacity: 1;
+    animation: hint-pulse 2s ease-in-out;
+  }
+
+  @keyframes hint-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== INTRO ========== -->
+<div class="intro" id="intro">
+  <h1>La Campana<br>Perduta</h1>
+  <div class="ornament">✠ ❦ ✠</div>
+  <p class="lore">
+    Anno Domini <strong>MCCCXXVII</strong>. Nell'abbazia avvolta dalla notte si è perduta la sacra <strong>Campana di San Benedetto</strong>, dal rintocco inconfondibile. Frate Anselmo, investigatore dell'Ordine, deve trovarla fra le altre dieci campane mute disseminate nei chiostri.
+  </p>
+  <p class="lore" style="margin-bottom: 8px;">
+    <em>Solo una risuonerà al tocco. Le altre taceranno.</em>
+  </p>
+  <button class="start-btn" id="startBtn">Entra nell'Abbazia</button>
+  <div class="tutorial">
+    <span class="tutorial-icon">☞</span> Tocca lo schermo per camminare<br>
+    <span class="tutorial-icon">🔔</span> Tocca una campana per saggiarla
+  </div>
+</div>
+
+<!-- ========== GAME ========== -->
+<div class="hud">
+  <div class="hud-inner">
+    <div class="hud-title">La Campana<br>Perduta</div>
+    <div class="hud-stats">
+      Saggiate<br>
+      <span class="count" id="checkedCount">0</span> / 10
+    </div>
+    <button class="reset-btn" id="resetBtn">Ricomincia</button>
+  </div>
+</div>
+
+<div class="scene" id="scene">
+  <div class="scene-bg"></div>
+  <div class="stars"></div>
+  <div class="moon"></div>
+
+  <!-- SVG monastery scenery -->
+  <svg class="scene-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+    <!-- Distant hill silhouette -->
+    <path d="M 0 75 Q 25 68 50 72 T 100 70 L 100 100 L 0 100 Z" fill="#0d0a08"/>
+
+    <!-- Bell tower far -->
+    <rect x="42" y="38" width="16" height="32" fill="#1a1410"/>
+    <polygon points="40,38 50,28 60,38" fill="#0d0a08"/>
+    <rect x="47" y="48" width="6" height="10" fill="#0a0806"/>
+
+    <!-- Left building -->
+    <rect x="0" y="52" width="30" height="48" fill="#231a12"/>
+    <polygon points="0,52 15,42 30,52" fill="#1a1410"/>
+
+    <!-- Right building -->
+    <rect x="70" y="55" width="30" height="45" fill="#231a12"/>
+    <polygon points="70,55 85,46 100,55" fill="#1a1410"/>
+
+    <!-- Cloister arches center foreground -->
+    <rect x="20" y="78" width="60" height="22" fill="#2d2419"/>
+    <!-- Arches -->
+    <path d="M 23 100 L 23 88 Q 28 82 33 88 L 33 100 Z" fill="#0a0806"/>
+    <path d="M 36 100 L 36 88 Q 41 82 46 88 L 46 100 Z" fill="#0a0806"/>
+    <path d="M 49 100 L 49 88 Q 54 82 59 88 L 59 100 Z" fill="#0a0806"/>
+    <path d="M 62 100 L 62 88 Q 67 82 72 88 L 72 100 Z" fill="#0a0806"/>
+
+    <!-- Ground tile lines -->
+    <line x1="0" y1="92" x2="100" y2="92" stroke="#0a0806" stroke-width="0.2"/>
+    <line x1="0" y1="96" x2="100" y2="96" stroke="#0a0806" stroke-width="0.2"/>
+
+    <!-- Windows glow -->
+    <rect x="6" y="62" width="3" height="4" fill="#ffb347" opacity="0.6"/>
+    <rect x="13" y="62" width="3" height="4" fill="#ffb347" opacity="0.4"/>
+    <rect x="21" y="64" width="3" height="4" fill="#ffb347" opacity="0.5"/>
+    <rect x="76" y="64" width="3" height="4" fill="#ffb347" opacity="0.5"/>
+    <rect x="84" y="62" width="3" height="4" fill="#ffb347" opacity="0.6"/>
+    <rect x="92" y="64" width="3" height="4" fill="#ffb347" opacity="0.4"/>
+
+    <!-- Cross on tower -->
+    <rect x="49.5" y="22" width="1" height="6" fill="#b8860b"/>
+    <rect x="48" y="24" width="4" height="1" fill="#b8860b"/>
+  </svg>
+
+  <!-- Candle ambient lights -->
+  <div class="candle-light" style="left: 8%; top: 64%;"></div>
+  <div class="candle-light" style="left: 24%; top: 66%; animation-delay: 0.5s;"></div>
+  <div class="candle-light" style="left: 86%; top: 65%; animation-delay: 1s;"></div>
+  <div class="candle-light" style="left: 50%; top: 50%; animation-delay: 1.5s;"></div>
+
+  <!-- Bells inserted by JS -->
+  <div class="bells-layer" id="bellsLayer"></div>
+
+  <!-- Friar -->
+  <div class="friar" id="friar">
+    <svg viewBox="0 0 22 32" shape-rendering="crispEdges">
+      <!-- Hood + robe (brown friar) -->
+      <!-- Hood -->
+      <rect x="7" y="2" width="8" height="2" fill="#3d2817"/>
+      <rect x="6" y="4" width="10" height="2" fill="#3d2817"/>
+      <rect x="5" y="6" width="12" height="4" fill="#3d2817"/>
+      <!-- Face shadow under hood -->
+      <rect x="8" y="8" width="6" height="3" fill="#1a0e08"/>
+      <!-- Robe body -->
+      <rect x="4" y="10" width="14" height="14" fill="#5c3a1f"/>
+      <rect x="3" y="12" width="16" height="10" fill="#5c3a1f"/>
+      <!-- Robe shading -->
+      <rect x="14" y="12" width="4" height="12" fill="#4a2d18"/>
+      <!-- Rope belt -->
+      <rect x="3" y="18" width="16" height="1" fill="#c4a868"/>
+      <!-- Knot -->
+      <rect x="10" y="19" width="2" height="2" fill="#c4a868"/>
+      <!-- Sleeves -->
+      <rect x="2" y="14" width="2" height="6" fill="#4a2d18"/>
+      <rect x="18" y="14" width="2" height="6" fill="#4a2d18"/>
+      <!-- Bottom robe flare -->
+      <rect x="2" y="24" width="18" height="4" fill="#5c3a1f"/>
+      <rect x="2" y="26" width="18" height="2" fill="#3d2817"/>
+      <!-- Feet -->
+      <rect x="6" y="28" width="4" height="3" fill="#2b1810"/>
+      <rect x="12" y="28" width="4" height="3" fill="#2b1810"/>
+      <!-- Cross pendant -->
+      <rect x="10" y="13" width="2" height="3" fill="#d4af37"/>
+      <rect x="9" y="14" width="4" height="1" fill="#d4af37"/>
+    </svg>
+  </div>
+</div>
+
+<div class="narrative">
+  <div class="narrative-box" id="narrative">
+    Frate Anselmo entra nei chiostri silenziosi. La luna illumina dieci campane sparse nell'ombra. Tocca lo schermo per camminare, poi tocca una campana per saggiarla...
+  </div>
+</div>
+
+<div class="walk-hint" id="walkHint">☞ Tocca dove vuoi andare</div>
+
+<!-- ========== VICTORY ========== -->
+<div class="victory" id="victory">
+  <h2>Deo Gratias!</h2>
+  <p id="victoryText">
+    Il rintocco sacro echeggia tra le mura dell'abbazia. Frate Anselmo ha ritrovato la Campana di San Benedetto. La pace torna nel monastero.
+  </p>
+  <div class="stats-line" id="victoryStats">— Saggiate 1 campana —</div>
+  <button class="start-btn" id="playAgainBtn">Gioca Ancora</button>
+</div>
+
+<!-- ========== BELL SVG TEMPLATE (hidden, copied per bell) ========== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- Pixel-art bell, 24x28 viewBox -->
+    <symbol id="bellShape" viewBox="0 0 24 28">
+      <!-- Crown/hanger -->
+      <rect x="10" y="0" width="4" height="2" fill="#7a5a20"/>
+      <rect x="9" y="2" width="6" height="1" fill="#7a5a20"/>
+      <!-- Top dome -->
+      <rect x="8" y="3" width="8" height="2" fill="#d4af37"/>
+      <rect x="6" y="5" width="12" height="2" fill="#d4af37"/>
+      <!-- Body -->
+      <rect x="5" y="7" width="14" height="10" fill="#b8860b"/>
+      <!-- Highlights -->
+      <rect x="6" y="8" width="2" height="8" fill="#e8c547"/>
+      <rect x="7" y="7" width="1" height="1" fill="#ffd700"/>
+      <!-- Shadows -->
+      <rect x="16" y="8" width="2" height="8" fill="#8a6508"/>
+      <rect x="17" y="9" width="1" height="6" fill="#6b4f06"/>
+      <!-- Lip -->
+      <rect x="4" y="17" width="16" height="2" fill="#8a6508"/>
+      <rect x="3" y="19" width="18" height="2" fill="#7a5a20"/>
+      <rect x="4" y="21" width="16" height="1" fill="#6b4f06"/>
+      <!-- Clapper -->
+      <rect x="11" y="22" width="2" height="3" fill="#3d2817"/>
+      <rect x="10" y="24" width="4" height="2" fill="#3d2817"/>
+    </symbol>
+  </defs>
+</svg>
+
+<script>
+(() => {
+  'use strict';
+
+  // ========== ELEMENTS ==========
+  const intro = document.getElementById('intro');
+  const startBtn = document.getElementById('startBtn');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const scene = document.getElementById('scene');
+  const bellsLayer = document.getElementById('bellsLayer');
+  const friar = document.getElementById('friar');
+  const narrative = document.getElementById('narrative');
+  const checkedCountEl = document.getElementById('checkedCount');
+  const victory = document.getElementById('victory');
+  const victoryStats = document.getElementById('victoryStats');
+  const walkHint = document.getElementById('walkHint');
+
+  // ========== STATE ==========
+  let bells = [];
+  let trueBellIndex = -1;
+  let checkedCount = 0;
+  let gameOver = false;
+  let audioCtx = null;
+
+  // ========== BELL POSITIONS (in % of viewport) ==========
+  // Carefully placed so they don't overlap each other or the friar's typical area
+  const BELL_SLOTS = [
+    { x: 8,  y: 30 },  // top-left building
+    { x: 22, y: 24 },
+    { x: 38, y: 18 },  // bell tower area
+    { x: 50, y: 14 },  // tower top
+    { x: 62, y: 18 },
+    { x: 78, y: 22 },
+    { x: 92, y: 32 },  // top-right
+    { x: 16, y: 48 },  // mid-left
+    { x: 84, y: 50 },  // mid-right
+    { x: 50, y: 42 },  // center
+  ];
+
+  // Narrative variations for misses (mute bells)
+  const MISS_LINES = [
+    "La campana resta muta. Solo un sussurro di polvere antica.",
+    "Nessun suono. Frate Anselmo prosegue la sua ricerca.",
+    "Silente come tomba. Non è questa la prescelta.",
+    "Il bronzo è freddo, immoto. Una falsa traccia.",
+    "Tace ostinata. Il mistero rimane intero.",
+    "Vuoto risuona nel suo cuore di metallo. Non è lei.",
+    "Il battaglio oscilla, ma nessuna voce ne esce.",
+    "Muta come il chiostro a vespro. Avanti.",
+    "Inerte. Forse la prossima sussurrerà il segreto.",
+  ];
+
+  // ========== AUDIO ==========
+  function initAudio() {
+    if (audioCtx) return;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    } catch (e) {
+      console.warn('Audio non disponibile');
+    }
+  }
+
+  // Real bell sound using additive synthesis: a fundamental + harmonics with decay
+  function playBell() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    const master = audioCtx.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.5, now + 0.005);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 4);
+    master.connect(audioCtx.destination);
+
+    // Bell partials (frequency ratio, amplitude, decay)
+    // Tuned roughly to a real bronze bell with hum, fundamental, tierce, quint, nominal
+    const partials = [
+      { freq: 220,  amp: 0.5,  decay: 4.0 },  // hum
+      { freq: 440,  amp: 1.0,  decay: 3.5 },  // prime / fundamental
+      { freq: 528,  amp: 0.6,  decay: 2.5 },  // minor third (tierce)
+      { freq: 660,  amp: 0.4,  decay: 2.0 },  // perfect fifth (quint)
+      { freq: 880,  amp: 0.5,  decay: 1.8 },  // nominal (octave)
+      { freq: 1320, amp: 0.25, decay: 1.2 },
+      { freq: 1760, amp: 0.15, decay: 0.8 },
+      { freq: 2640, amp: 0.08, decay: 0.5 },
+    ];
+
+    partials.forEach(p => {
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(p.freq, now);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(p.amp, now + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + p.decay);
+      osc.connect(g);
+      g.connect(master);
+      osc.start(now);
+      osc.stop(now + p.decay + 0.1);
+    });
+
+    // Initial strike noise (the "ping" of metal)
+    const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.05, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuf;
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.setValueAtTime(0.3, now);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 3000;
+    filter.Q.value = 2;
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(master);
+    noise.start(now);
+  }
+
+  // Small dull "thunk" for false bells
+  function playDull() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+
+    const osc = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(110, now);
+    osc.frequency.exponentialRampToValueAtTime(60, now + 0.15);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.25, now + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+    osc.connect(g);
+    g.connect(audioCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.35);
+
+    // dull thunk noise
+    const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.1, audioCtx.sampleRate);
+    const data = noiseBuf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / data.length, 3);
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuf;
+    const noiseGain = audioCtx.createGain();
+    noiseGain.gain.value = 0.2;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 400;
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+    noise.start(now);
+  }
+
+  // ========== BELL CREATION ==========
+  function createBells() {
+    bellsLayer.innerHTML = '';
+    bells = [];
+
+    // Shuffle slots for variety on replay
+    const slots = [...BELL_SLOTS].sort(() => Math.random() - 0.5);
+
+    // Pick the true bell randomly
+    trueBellIndex = Math.floor(Math.random() * 10);
+
+    slots.forEach((slot, i) => {
+      const bell = document.createElement('div');
+      bell.className = 'bell';
+      bell.style.left = slot.x + '%';
+      bell.style.top = slot.y + '%';
+      bell.style.transform = 'translate(-50%, -50%)';
+      bell.dataset.index = i;
+
+      // Slight size variation for visual richness
+      const size = 36 + Math.floor(Math.random() * 10);
+
+      bell.innerHTML = `
+        <svg width="${size}" height="${Math.round(size * 28 / 24)}" viewBox="0 0 24 28" shape-rendering="crispEdges">
+          <use href="#bellShape"/>
+          <g class="bell-x">
+            <line x1="2" y1="4" x2="22" y2="26" stroke="#5c1a1a" stroke-width="2"/>
+            <line x1="22" y1="4" x2="2" y2="26" stroke="#5c1a1a" stroke-width="2"/>
+          </g>
+        </svg>
+      `;
+
+      bell.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onBellClick(i, slot);
+      });
+      // Prevent touchstart from bubbling to scene (so we don't trigger a walk)
+      bell.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+      }, { passive: true });
+
+      bellsLayer.appendChild(bell);
+      bells.push({ el: bell, slot, checked: false });
+    });
+  }
+
+  // ========== FRIAR MOVEMENT ==========
+  function moveFriarTo(xPct, yPct, callback) {
+    friar.classList.add('walking');
+    friar.style.left = xPct + '%';
+    friar.style.top = yPct + '%';
+
+    // Determine duration based on distance for realistic walk
+    const rect = scene.getBoundingClientRect();
+    const currentLeft = parseFloat(friar.style.left || '50');
+    const currentTop = parseFloat(friar.style.top || '85');
+    const dx = (xPct - currentLeft) * rect.width / 100;
+    const dy = (yPct - currentTop) * rect.height / 100;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const duration = Math.max(300, Math.min(1200, dist * 3));
+    friar.style.transition = `left ${duration}ms linear, top ${duration}ms linear`;
+
+    clearTimeout(friar._walkTimeout);
+    friar._walkTimeout = setTimeout(() => {
+      friar.classList.remove('walking');
+      if (callback) callback();
+    }, duration);
+  }
+
+  function showRipple(x, y) {
+    const ripple = document.createElement('div');
+    ripple.className = 'ripple';
+    ripple.style.left = x + 'px';
+    ripple.style.top = y + 'px';
+    scene.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 600);
+  }
+
+  // ========== INTERACTIONS ==========
+  function onSceneTap(e) {
+    if (gameOver) return;
+    if (e.target.closest('.bell')) return; // bell handles itself
+
+    const rect = scene.getBoundingClientRect();
+    let clientX, clientY;
+    if (e.touches && e.touches[0]) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const xPct = (x / rect.width) * 100;
+    let yPct = (y / rect.height) * 100;
+
+    // Constrain the friar's vertical position to a walkable band (not in the sky)
+    yPct = Math.max(55, Math.min(95, yPct));
+
+    showRipple(x, y);
+    moveFriarTo(xPct, yPct);
+    hideHint();
+  }
+
+  function onBellClick(index, slot) {
+    if (gameOver) return;
+    const bell = bells[index];
+    if (bell.checked) return;
+
+    initAudio();
+
+    // Walk to the bell first
+    const targetX = slot.x;
+    const targetY = Math.max(55, Math.min(85, slot.y + 25)); // approach from below
+    moveFriarTo(targetX, targetY, () => {
+      // Then ring it
+      bell.checked = true;
+      checkedCount++;
+      checkedCountEl.textContent = checkedCount;
+
+      bell.el.classList.add('swing');
+      setTimeout(() => bell.el.classList.remove('swing'), 700);
+
+      if (index === trueBellIndex) {
+        // FOUND!
+        playBell();
+        setTimeout(() => playBell(), 1200); // second toll for triumph
+        setTimeout(() => playBell(), 2400); // third toll
+        bell.el.classList.add('found');
+
+        // Add halo
+        const halo = document.createElement('div');
+        halo.className = 'halo';
+        halo.style.left = slot.x + '%';
+        halo.style.top = slot.y + '%';
+        bellsLayer.appendChild(halo);
+
+        // Mark all unchecked bells as checked visually (game ended)
+        setTimeout(() => bells.forEach((b, i) => {
+          if (i !== trueBellIndex && !b.checked) {
+            b.checked = true;
+            b.el.classList.add('checked');
+          }
+        }), 100);
+
+        updateNarrative("✠ DEO GRATIAS! ✠ Il rintocco sacro echeggia nei chiostri. È lei: la Campana di San Benedetto!", true);
+
+        gameOver = true;
+        setTimeout(showVictory, 2800);
+      } else {
+        // Wrong bell
+        playDull();
+        bell.el.classList.add('checked');
+        const line = MISS_LINES[(checkedCount - 1) % MISS_LINES.length];
+        updateNarrative(line + ` (${10 - checkedCount} campane rimaste)`);
+      }
+    });
+  }
+
+  function updateNarrative(text, special = false) {
+    narrative.textContent = text;
+    if (special) {
+      narrative.classList.add('toll');
+      setTimeout(() => narrative.classList.remove('toll'), 500);
+    }
+  }
+
+  function showVictory() {
+    victoryStats.textContent = `— ${checkedCount} ${checkedCount === 1 ? 'campana saggiata' : 'campane saggiate'} —`;
+    let flavor = "";
+    if (checkedCount === 1) {
+      flavor = "Un colpo d'orecchio prodigioso! Avete trovato la Campana al primo tentativo. Forse l'Altissimo guida la vostra mano.";
+    } else if (checkedCount <= 3) {
+      flavor = "Pochi tentativi: l'orecchio del frate è acuto come quello di una volpe del bosco.";
+    } else if (checkedCount <= 6) {
+      flavor = "Con pazienza monastica avete trovato la verità tra il silenzio del bronzo.";
+    } else {
+      flavor = "Una ricerca lunga, ma la perseveranza è virtù dei santi. La Campana è salva.";
+    }
+    document.getElementById('victoryText').textContent = flavor;
+    victory.classList.add('show');
+  }
+
+  function hideHint() {
+    walkHint.classList.remove('show');
+  }
+
+  // ========== GAME RESET ==========
+  function resetGame() {
+    checkedCount = 0;
+    gameOver = false;
+    checkedCountEl.textContent = '0';
+    victory.classList.remove('show');
+    // Clear halos
+    document.querySelectorAll('.halo').forEach(h => h.remove());
+    // Reset friar position
+    friar.style.transition = 'none';
+    friar.style.left = '50%';
+    friar.style.top = '88%';
+    friar.classList.remove('walking');
+    setTimeout(() => { friar.style.transition = ''; }, 50);
+    createBells();
+    updateNarrative("Frate Anselmo riprende la ricerca. Dieci campane attendono il tocco della verità...");
+
+    // Show walking hint briefly
+    setTimeout(() => walkHint.classList.add('show'), 800);
+    setTimeout(() => walkHint.classList.remove('show'), 5000);
+  }
+
+  // ========== INIT ==========
+  function startGame() {
+    intro.classList.add('hide');
+    initAudio();
+    resetGame();
+  }
+
+  startBtn.addEventListener('click', startGame);
+  playAgainBtn.addEventListener('click', resetGame);
+  resetBtn.addEventListener('click', () => {
+    if (confirm('Ricominciare la ricerca?')) resetGame();
+  });
+
+  // Scene tap = walk
+  scene.addEventListener('click', onSceneTap);
+
+  // Resume audio on first user gesture (mobile requirement)
+  document.addEventListener('touchstart', () => {
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }, { passive: true, once: false });
+
+  // Init initial bells (so intro screen has them in background... but actually they're hidden)
+  createBells();
+
+  // Place friar initial position
+  friar.style.left = '50%';
+  friar.style.top = '88%';
+})();
+</script>
+</body>
+</html>
