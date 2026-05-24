@@ -670,6 +670,17 @@
     100% { transform: translate(-50%, -100%) translateY(0); }
   }
 
+  /* Friar stunned by heretic */
+  .friar.stunned svg {
+    animation: friar-tremble 0.15s infinite;
+  }
+
+  @keyframes friar-tremble {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
+  }
+
   /* Swipe-up hint when blocked */
   .swipe-hint {
     position: fixed;
@@ -1364,6 +1375,7 @@
   const heretic = document.getElementById('heretic');
   const hereticAura = document.getElementById('hereticAura');
   const swipeHint = document.getElementById('swipeHint');
+  const hereticAudio = document.getElementById('hereticAudio');
   const narrative = document.getElementById('narrative');
   const checkedCountEl = document.getElementById('checkedCount');
   const roomLabel = document.getElementById('roomLabel');
@@ -1403,9 +1415,12 @@
   let hereticBlocked = false;  // true when friar is blocked by him
   let hereticFrozen = false;   // true when heretic stops because he met the friar
   let friarIsJumping = false;
+  let friarStunned = false;    // true for STUN_DURATION ms after encounter starts
+  let stunEndsAt = 0;          // performance.now() timestamp when stun ends
   let lastTickTime = 0;
   let collisionShownAt = 0;    // throttle narrative
   const ENCOUNTER_DIST = 50;   // world units: distance at which they stop face-to-face
+  const STUN_DURATION = 3000;  // ms — friar paralysed when first meeting heretic
 
   // ============== BELL POSITIONS (in world coords) ==============
   // Spread across all 5 zones, with some semi-hidden positions
@@ -1449,6 +1464,113 @@
   };
 
   // ============== AUDIO ==============
+  // Encounter audio: decoded into a Web Audio buffer (more reliable on iOS
+  // because it shares the unlocked AudioContext that's already used for bells)
+  let hereticAudioBuffer = null;
+  let hereticAudioLoading = false;
+
+  function loadHereticAudioBuffer() {
+    if (!audioCtx || hereticAudioBuffer || hereticAudioLoading) return;
+    hereticAudioLoading = true;
+    // Find a source with a data URI we can decode directly.
+    // Prefer mp3 (audio/mpeg) because Web Audio's decodeAudioData supports
+    // it universally; ogg/opus may fail on Safari.
+    let src = null;
+    if (hereticAudio) {
+      const sources = hereticAudio.querySelectorAll('source');
+      // First pass: look for mpeg
+      for (const s of sources) {
+        if (s.src && s.src.indexOf('data:') === 0 &&
+            (s.type === 'audio/mpeg' || s.src.indexOf('audio/mpeg') !== -1)) {
+          src = s.src; break;
+        }
+      }
+      // Fallback: any data URI
+      if (!src) {
+        for (const s of sources) {
+          if (s.src && s.src.indexOf('data:') === 0) { src = s.src; break; }
+        }
+      }
+      if (!src) src = hereticAudio.currentSrc;
+    }
+    if (!src) { hereticAudioLoading = false; return; }
+
+    let arrayBuffer = null;
+    try {
+      // If it's a data URI, decode base64 directly (faster, no fetch)
+      const dataIdx = src.indexOf(';base64,');
+      if (dataIdx !== -1) {
+        const b64 = src.substring(dataIdx + 8);
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        arrayBuffer = bytes.buffer;
+      }
+    } catch (e) {
+      console.warn('Base64 decode failed:', e);
+    }
+
+    const decode = (buf) => {
+      // Safari requires callback form of decodeAudioData
+      audioCtx.decodeAudioData(
+        buf,
+        (decoded) => {
+          hereticAudioBuffer = decoded;
+          hereticAudioLoading = false;
+        },
+        (err) => {
+          console.warn('decodeAudioData failed:', err);
+          hereticAudioLoading = false;
+        }
+      );
+    };
+
+    if (arrayBuffer) {
+      decode(arrayBuffer);
+    } else {
+      // Fallback: fetch the source
+      fetch(src)
+        .then(r => r.arrayBuffer())
+        .then(buf => decode(buf))
+        .catch(err => {
+          console.warn('Fetch heretic audio failed:', err);
+          hereticAudioLoading = false;
+        });
+    }
+  }
+
+  // Unlock both AudioContext and <audio> element on first user gesture (iOS req)
+  let audioUnlocked = false;
+  function unlockAudioOnce() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    initAudio();
+    if (audioCtx && audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+    // Trick: briefly play & pause the <audio> element to satisfy iOS gesture lock
+    if (hereticAudio) {
+      try {
+        hereticAudio.muted = true;
+        const p = hereticAudio.play();
+        if (p && p.then) {
+          p.then(() => {
+            hereticAudio.pause();
+            hereticAudio.currentTime = 0;
+            hereticAudio.muted = false;
+          }).catch(() => {
+            hereticAudio.muted = false;
+          });
+        } else {
+          hereticAudio.pause();
+          hereticAudio.muted = false;
+        }
+      } catch (e) { hereticAudio.muted = false; }
+    }
+    // Pre-decode the encounter audio buffer
+    loadHereticAudioBuffer();
+  }
+
   function initAudio() {
     if (audioCtx) return;
     try {
@@ -1769,12 +1891,12 @@
     }, duration);
   }
 
-  // Cosmetic feedback when friar is stopped by heretic
+  // Cosmetic feedback when friar meets heretic
   function showBlockedFeedback() {
     const now = performance.now();
     if (now - collisionShownAt > 1500) {
       collisionShownAt = now;
-      updateNarrative("L'eretico sbarra il passo a Frate Anselmo! Trascina verso l'alto per saltarlo.");
+      updateNarrative("L'eretico sbarra il passo a Frate Anselmo, che resta paralizzato dal terrore! Trascina verso l'alto per saltarlo.");
     }
     swipeHint.classList.add('show');
   }
@@ -1791,6 +1913,16 @@
   // ============== INTERACTIONS ==============
   function onViewportTap(e) {
     if (gameOver) return;
+    if (friarStunned) {
+      // Stunned by heretic — show feedback only
+      const now = performance.now();
+      const remaining = Math.max(0, Math.ceil((stunEndsAt - now) / 1000));
+      if (remaining > 0) {
+        updateNarrative(`Frate Anselmo è paralizzato dall'eretico! Ancora ${remaining}s, o salta verso l'alto.`);
+      }
+      return;
+    }
+    if (friarIsJumping) return;
     if (e.target.closest('.bell')) return;
 
     const rect = viewport.getBoundingClientRect();
@@ -1822,17 +1954,28 @@
   function onBellClick(index, slot) {
     if (gameOver) return;
     const bell = bells[index];
-    if (bell.checked) return;
+    if (bell.checked) return;          // already saggiata, ignore
+    if (friarStunned) {                // paralysed by heretic — can't act
+      updateNarrative("Frate Anselmo è paralizzato dall'eretico! Aspetta o salta sopra di lui.");
+      return;
+    }
+    if (friarIsJumping) return;        // mid-jump
 
     initAudio();
+
+    // ===== Mark as checked IMMEDIATELY to prevent double-counting =====
+    // Even if the player taps the same bell multiple times while the friar
+    // is walking, the bell is already "claimed" and subsequent taps are ignored.
+    bell.checked = true;
+    checkedCount++;
+    checkedCountEl.textContent = checkedCount;
+    updateMinimapBell(index);
 
     // Walk to a position below the bell (the friar approaches from the ground)
     const approachY = Math.min(540, Math.max(480, slot.y + 80));
     moveFriarTo(slot.x, approachY, () => {
-      bell.checked = true;
-      checkedCount++;
-      checkedCountEl.textContent = checkedCount;
-      updateMinimapBell(index);
+      // If the bell was already resolved (e.g. found bell ended the game), bail
+      if (gameOver && index !== trueBellIndex) return;
 
       bell.el.classList.add('swing');
       setTimeout(() => bell.el.classList.remove('swing'), 700);
@@ -1851,7 +1994,7 @@
         halo.style.top = (slot.y / 600 * 100) + '%';
         bellsLayer.appendChild(halo);
 
-        // Mark others as visually checked
+        // Mark others as visually checked (without inflating count further)
         setTimeout(() => bells.forEach((b, i) => {
           if (i !== trueBellIndex && !b.checked) {
             b.checked = true;
@@ -1949,69 +2092,143 @@
       return;
     }
 
-    // === Check encounter (both stop when they're close enough on the same ground level)
+    // === Detect encounter ===
     const dx = hereticX - friarWorldX;
     const absDx = Math.abs(dx);
-    // Only "incrociano" when they're on similar Y (both walking on ground)
     const sameLevel = Math.abs(friarWorldY - hereticY) < 60;
+    const inEncounterRange = !friarIsJumping && sameLevel && absDx <= ENCOUNTER_DIST;
 
-    if (!friarIsJumping && sameLevel && absDx <= ENCOUNTER_DIST) {
-      // ENCOUNTER: both must stop here
-      if (!hereticFrozen) {
-        hereticFrozen = true;
-        // Heretic stops his walk animation
-        heretic.querySelector('.heretic-body').style.animationPlayState = 'paused';
-      }
-      // Stop friar's current walk if he was moving toward this point
-      if (friarMoving) {
-        stopFriarWalk();
-      }
-      // Show the swipe-up hint
-      if (!hereticBlocked) {
-        hereticBlocked = true;
-        showBlockedFeedback();
-      }
-      // Heretic faces the friar
-      if (dx > 0) {
-        // friar is to the left of heretic → heretic faces left
-        heretic.classList.remove('flip-x');
-      } else {
-        heretic.classList.add('flip-x');
-      }
-    } else if (!friarIsJumping) {
-      // No encounter: heretic patrols normally
-      if (hereticFrozen) {
+    // === Stun lifecycle ===
+    if (friarStunned) {
+      // We're currently in the stun window: BOTH are frozen no matter what.
+      // Don't move the heretic. Don't allow the friar to do anything.
+      if (now >= stunEndsAt) {
+        // Stun ends — release both
+        friarStunned = false;
         hereticFrozen = false;
-        heretic.querySelector('.heretic-body').style.animationPlayState = '';
-      }
-      if (hereticBlocked) {
         hereticBlocked = false;
+        friar.classList.remove('stunned');
+        const body = heretic.querySelector('.heretic-body');
+        if (body) body.style.animationPlayState = '';
         swipeHint.classList.remove('show');
+        // Push the heretic AWAY from the friar so they don't immediately re-collide
+        hereticDir = (friarWorldX > hereticX) ? -1 : 1;
+        // Clear the friar's pending target so a tap is required to resume movement.
+        // (Per spec: dopo lo stun il frate è libero ma non riparte da solo se ha un target salvato)
+        // Actually we DO want to resume — comment out if you prefer manual restart:
+        if (friarTargetX !== null && Math.abs(friarTargetX - friarWorldX) > 10) {
+          // Only resume if heretic is no longer blocking after the push
+          // We'll let the next tick decide; first nudge the heretic a bit
+          hereticX += hereticDir * 5;
+        }
       }
-
-      hereticX += hereticDir * hereticSpeed * dt;
-      // Bounce at zone edges
-      if (hereticX <= hereticZoneStart) {
-        hereticX = hereticZoneStart;
-        hereticDir = 1;
-      } else if (hereticX >= hereticZoneEnd) {
-        hereticX = hereticZoneEnd;
-        hereticDir = -1;
-      }
-
-      // If friar has a pending target on the other side and heretic just moved out
-      // of the encounter zone, resume friar's movement
-      if (!friarMoving && friarTargetX !== null && Math.abs(friarTargetX - friarWorldX) > 10) {
-        const tx = friarTargetX, ty = friarTargetY;
-        friarTargetX = null;
-        friarTargetY = null;
-        moveFriarTo(tx, ty);
-      }
+      // Heretic keeps facing the friar during stun
+      if (dx > 0) heretic.classList.remove('flip-x');
+      else heretic.classList.add('flip-x');
+      updateHereticPosition();
+      requestAnimationFrame(tickHeretic);
+      return;
     }
-    // (During friar jump, the heretic also stays frozen — see hereticFrozen flag in tryJumpOverHeretic)
+
+    // === Trigger a new encounter ===
+    if (inEncounterRange && !hereticFrozen) {
+      // First-time encounter: stun starts
+      hereticFrozen = true;
+      friarStunned = true;
+      stunEndsAt = now + STUN_DURATION;
+      hereticBlocked = true;
+      friar.classList.add('stunned');
+      const body = heretic.querySelector('.heretic-body');
+      if (body) body.style.animationPlayState = 'paused';
+      // Stop friar's walk where he currently is
+      if (friarMoving) stopFriarWalk();
+      // Face each other
+      if (dx > 0) heretic.classList.remove('flip-x');
+      else heretic.classList.add('flip-x');
+      // Friar faces the heretic
+      if (dx > 0) friar.classList.remove('flip-x');
+      else friar.classList.add('flip-x');
+      // Play the encounter audio
+      playHereticAudio();
+      // Show feedback
+      showBlockedFeedback();
+      updateHereticPosition();
+      requestAnimationFrame(tickHeretic);
+      return;
+    }
+
+    // === Normal patrol (no encounter, no stun) ===
+    hereticX += hereticDir * hereticSpeed * dt;
+    if (hereticX <= hereticZoneStart) {
+      hereticX = hereticZoneStart;
+      hereticDir = 1;
+    } else if (hereticX >= hereticZoneEnd) {
+      hereticX = hereticZoneEnd;
+      hereticDir = -1;
+    }
+
+    // If friar has a pending target and now the heretic is out of the way, resume
+    if (!friarMoving && friarTargetX !== null && Math.abs(friarTargetX - friarWorldX) > 10) {
+      const tx = friarTargetX, ty = friarTargetY;
+      friarTargetX = null;
+      friarTargetY = null;
+      moveFriarTo(tx, ty);
+    }
 
     updateHereticPosition();
     requestAnimationFrame(tickHeretic);
+  }
+
+  // Play heretic encounter audio. Primary: Web Audio buffer (reliable on iOS
+  // since the AudioContext is already unlocked by the bell sounds). Fallback:
+  // the <audio> element.
+  let hereticAudioSource = null;
+  function playHereticAudio() {
+    // Try Web Audio buffer first
+    if (audioCtx && hereticAudioBuffer) {
+      try {
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+        // Stop any previous instance
+        if (hereticAudioSource) {
+          try { hereticAudioSource.stop(); } catch(e) {}
+        }
+        const src = audioCtx.createBufferSource();
+        src.buffer = hereticAudioBuffer;
+        const g = audioCtx.createGain();
+        g.gain.value = 1.0;
+        src.connect(g);
+        g.connect(audioCtx.destination);
+        src.start(0);
+        hereticAudioSource = src;
+        return;
+      } catch (e) {
+        console.warn('Web Audio heretic playback failed, falling back:', e);
+      }
+    }
+    // Fallback: try <audio> element (may be blocked on iOS without prior unlock)
+    if (hereticAudio) {
+      try {
+        hereticAudio.currentTime = 0;
+        const p = hereticAudio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(err => console.warn('HTML audio play blocked:', err));
+        }
+      } catch (e) { /* ignore */ }
+    }
+    // If neither worked, try to load the buffer now (next encounter will work)
+    if (audioCtx && !hereticAudioBuffer && !hereticAudioLoading) {
+      loadHereticAudioBuffer();
+    }
+  }
+
+  function stopHereticAudio() {
+    if (hereticAudioSource) {
+      try { hereticAudioSource.stop(); } catch (e) {}
+      hereticAudioSource = null;
+    }
+    if (hereticAudio && !hereticAudio.paused) {
+      try { hereticAudio.pause(); hereticAudio.currentTime = 0; } catch(e) {}
+    }
   }
 
   // Stop the friar mid-walk and freeze position where he currently is on screen.
@@ -2115,11 +2332,17 @@
     // After jump completes
     setTimeout(() => {
       friar.classList.remove('jumping');
+      friar.classList.remove('stunned');
       friarIsJumping = false;
       friar.style.transition = '';
       friarGlow.style.transition = '';
       world.style.transition = '';
       hereticBlocked = false;
+      // Jump interrupts the stun!
+      friarStunned = false;
+      stunEndsAt = 0;
+      // Stop the heretic audio if still playing
+      stopHereticAudio();
       // Unfreeze the heretic — he resumes patrol, walking AWAY from the friar
       // so they don't immediately collide again
       hereticFrozen = false;
@@ -2173,13 +2396,18 @@
     friar.style.transition = 'none';
     friarGlow.style.transition = 'none';
     world.style.transition = 'none';
-    friar.classList.remove('walking', 'flip-x', 'jumping');
+    friar.classList.remove('walking', 'flip-x', 'jumping', 'stunned');
     friar._lastZone = null;
     friarTargetX = null;
     friarTargetY = null;
     friarIsJumping = false;
+    friarStunned = false;
+    stunEndsAt = 0;
     hereticBlocked = false;
     hereticFrozen = false;
+    if (hereticAudio) {
+      stopHereticAudio();
+    }
     const hereticBody = heretic.querySelector('.heretic-body');
     if (hereticBody) hereticBody.style.animationPlayState = '';
 
@@ -2199,7 +2427,7 @@
   // ============== INIT ==============
   function startGame() {
     intro.classList.add('hide');
-    initAudio();
+    unlockAudioOnce();
     resizeWorld();
     setFriarPosition(200, 520);
     resetGame();
@@ -2208,8 +2436,9 @@
     requestAnimationFrame(tickHeretic);
   }
 
-  startBtn.addEventListener('click', startGame);
+  startBtn.addEventListener('click', () => { unlockAudioOnce(); startGame(); });
   playAgainBtn.addEventListener('click', () => {
+    unlockAudioOnce();
     resetGame();
   });
   resetBtn.addEventListener('click', () => {
@@ -2278,9 +2507,13 @@
   });
 
   document.addEventListener('touchstart', () => {
+    unlockAudioOnce();
     if (audioCtx && audioCtx.state === 'suspended') {
       audioCtx.resume();
     }
+  }, { passive: true });
+  document.addEventListener('click', () => {
+    unlockAudioOnce();
   }, { passive: true });
 
   window.addEventListener('resize', () => {
@@ -2297,5 +2530,12 @@
   setFriarPosition(200, 520);
 })();
 </script>
+
+<!-- Heretic encounter audio (embedded as data URI for offline single-file) -->
+<audio id="hereticAudio" preload="auto" playsinline>
+  <source src="data:audio/ogg;base64,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" type="audio/ogg; codecs=opus">
+  <source src="data:audio/mpeg;base64,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" type="audio/mpeg">
+</audio>
+
 </body>
 </html>
