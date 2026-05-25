@@ -841,6 +841,92 @@
     font-style: normal;
     margin-bottom: 26px;
   }
+
+  /* Victory: stars + score + breakdown */
+  .victory-stars {
+    font-size: clamp(38px, 9vw, 60px);
+    letter-spacing: 8px;
+    color: var(--stone-light);  /* empty/dim by default */
+    margin-bottom: 14px;
+    line-height: 1;
+    filter: drop-shadow(0 2px 0 var(--ink));
+  }
+
+  .victory-stars .lit {
+    color: var(--gold-bright);
+    text-shadow: 0 0 20px var(--gold), 0 0 40px var(--candle);
+    animation: star-twinkle 2s ease-in-out infinite;
+    display: inline-block;
+  }
+
+  .victory-stars .lit:nth-child(2) { animation-delay: 0.3s; }
+  .victory-stars .lit:nth-child(3) { animation-delay: 0.6s; }
+
+  @keyframes star-twinkle {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+
+  .victory-score {
+    font-family: 'VT323', monospace;
+    font-size: clamp(56px, 14vw, 88px);
+    color: var(--gold-bright);
+    text-shadow: 3px 3px 0 var(--ink), 0 0 30px var(--gold);
+    line-height: 1;
+    margin-bottom: -2px;
+  }
+
+  .victory-score-label {
+    font-family: 'IM Fell English', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--parchment-dark);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .victory-breakdown {
+    background: rgba(232,217,184,0.92);
+    color: var(--ink);
+    padding: 10px 18px;
+    border: 2px solid var(--stone-light);
+    box-shadow: 0 2px 0 var(--stone-dark);
+    font-family: 'IM Fell English', serif;
+    font-size: 16px;
+    line-height: 1.5;
+    max-width: 320px;
+    margin-bottom: 18px;
+    text-align: left;
+  }
+
+  .victory-breakdown .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+  }
+
+  .victory-breakdown .row.total {
+    border-top: 1px dashed var(--stone-light);
+    margin-top: 6px;
+    padding-top: 6px;
+    font-weight: bold;
+  }
+
+  .victory-breakdown .val {
+    font-family: 'VT323', monospace;
+    font-style: normal;
+    font-size: 18px;
+    color: var(--blood);
+  }
+
+  .victory-breakdown .val.pos { color: #2a6b2a; }
+  .victory-breakdown .val.neg { color: var(--blood); }
+
+  /* HUD timer styling */
+  .hud-timer .count {
+    color: var(--brass);
+  }
 </style>
 </head>
 <body>
@@ -872,6 +958,10 @@
     <div class="hud-stats">
       Saggiate<br>
       <span class="count" id="checkedCount">0</span> / 10
+    </div>
+    <div class="hud-stats hud-timer">
+      Tempo<br>
+      <span class="count" id="timerDisplay">0:00</span>
     </div>
     <button class="reset-btn" id="resetBtn">Ricomincia</button>
   </div>
@@ -1306,6 +1396,10 @@
 <!-- ========== VICTORY ========== -->
 <div class="victory" id="victory">
   <h2>Deo Gratias!</h2>
+  <div class="victory-stars" id="victoryStars">★★★</div>
+  <div class="victory-score" id="victoryScore">0</div>
+  <div class="victory-score-label">punti</div>
+  <div class="victory-breakdown" id="victoryBreakdown"></div>
   <p id="victoryText">
     Il rintocco sacro echeggia per tutta l'abbazia.
   </p>
@@ -1392,6 +1486,10 @@
   const arrowRight = document.getElementById('arrowRight');
   const starsContainer = document.getElementById('stars');
   const moon = document.getElementById('moon');
+  const timerDisplay = document.getElementById('timerDisplay');
+  const victoryScoreEl = document.getElementById('victoryScore');
+  const victoryStarsEl = document.getElementById('victoryStars');
+  const victoryBreakdownEl = document.getElementById('victoryBreakdown');
 
   // ============== STATE ==============
   let bells = [];
@@ -1410,6 +1508,15 @@
   let friarTargetX = null;     // pending target if blocked by heretic
   let friarTargetY = null;
 
+  // ============== SCORING ==============
+  let gameStartTime = 0;       // performance.now() when game started
+  let gameElapsedMs = 0;       // final elapsed ms when game ends
+  let timerInterval = null;    // setInterval id for live HUD timer
+  const BASE_SCORE = 10000;    // starting points
+  const PENALTY_PER_MISS = 700;     // points lost per wrong bell
+  const PENALTY_PER_SECOND = 15;    // points lost per second elapsed
+  const MIN_SCORE = 0;
+
   // Heretic state — wanders left/right within current zone bounds
   let hereticX = 1200;         // world X of heretic
   let hereticY = 520;          // ground level Y
@@ -1423,9 +1530,11 @@
   let friarIsJumping = false;
   let friarStunned = false;    // true for STUN_DURATION ms after encounter starts
   let stunEndsAt = 0;          // performance.now() timestamp when stun ends
+  let encounterCooldown = false; // true after a stun ends, until friar & heretic separate
   let lastTickTime = 0;
   let collisionShownAt = 0;    // throttle narrative
   const ENCOUNTER_DIST = 50;   // world units: distance at which they stop face-to-face
+  const COOLDOWN_DIST = 120;   // must move farther apart than this to re-enable encounters
   const STUN_DURATION = 3000;  // ms — friar paralysed when first meeting heretic
 
   // ============== BELL POSITIONS (in world coords) ==============
@@ -2026,6 +2135,53 @@
     });
   }
 
+  // ============== TIMER & SCORE ==============
+  function formatTime(ms) {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return m + ':' + (s < 10 ? '0' + s : s);
+  }
+
+  function startTimer() {
+    gameStartTime = performance.now();
+    if (timerDisplay) timerDisplay.textContent = '0:00';
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+      if (gameOver) return;
+      const elapsed = performance.now() - gameStartTime;
+      if (timerDisplay) timerDisplay.textContent = formatTime(elapsed);
+    }, 500);
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+    if (gameStartTime > 0) {
+      gameElapsedMs = performance.now() - gameStartTime;
+    }
+  }
+
+  // Compute final score from misses and time
+  function computeScore() {
+    const misses = Math.max(0, checkedCount - 1);   // wrong bells (excluding the correct one)
+    const seconds = Math.floor(gameElapsedMs / 1000);
+    const missPenalty = misses * PENALTY_PER_MISS;
+    const timePenalty = seconds * PENALTY_PER_SECOND;
+    const score = Math.max(MIN_SCORE, BASE_SCORE - missPenalty - timePenalty);
+    return { score, misses, seconds, missPenalty, timePenalty };
+  }
+
+  // 1 to 3 stars based on score percentile
+  function starsFromScore(score) {
+    if (score >= 7500) return 3;
+    if (score >= 4500) return 2;
+    if (score >= 2000) return 1;
+    return 0;
+  }
+
   function updateNarrative(text, special = false) {
     narrative.textContent = text;
     if (special) {
@@ -2035,16 +2191,55 @@
   }
 
   function showVictory() {
-    victoryStats.textContent = `— ${checkedCount} ${checkedCount === 1 ? 'campana saggiata' : 'campane saggiate'} —`;
+    stopTimer();
+    const { score, misses, seconds, missPenalty, timePenalty } = computeScore();
+    const stars = starsFromScore(score);
+
+    // Stars rendering: 3 chars, "lit" class on the earned ones
+    let starsHtml = '';
+    for (let i = 0; i < 3; i++) {
+      starsHtml += i < stars
+        ? '<span class="lit">★</span>'
+        : '<span>★</span>';
+    }
+    victoryStarsEl.innerHTML = starsHtml;
+
+    // Animate score count-up
+    const finalScore = score;
+    const animDuration = 1400;
+    const startT = performance.now();
+    function animateScore(now) {
+      const t = Math.min(1, (now - startT) / animDuration);
+      // ease-out
+      const eased = 1 - Math.pow(1 - t, 3);
+      const current = Math.round(eased * finalScore);
+      victoryScoreEl.textContent = current.toLocaleString('it-IT');
+      if (t < 1) requestAnimationFrame(animateScore);
+    }
+    victoryScoreEl.textContent = '0';
+    requestAnimationFrame(animateScore);
+
+    // Breakdown table
+    victoryBreakdownEl.innerHTML = `
+      <div class="row"><span>Punti iniziali</span><span class="val pos">+${BASE_SCORE.toLocaleString('it-IT')}</span></div>
+      <div class="row"><span>Campane sbagliate (${misses})</span><span class="val neg">−${missPenalty.toLocaleString('it-IT')}</span></div>
+      <div class="row"><span>Tempo (${formatTime(gameElapsedMs)})</span><span class="val neg">−${timePenalty.toLocaleString('it-IT')}</span></div>
+      <div class="row total"><span>Totale</span><span class="val">${score.toLocaleString('it-IT')}</span></div>
+    `;
+
+    victoryStats.textContent = `— ${checkedCount} ${checkedCount === 1 ? 'campana saggiata' : 'campane saggiate'} in ${formatTime(gameElapsedMs)} —`;
+
     let flavor = "";
-    if (checkedCount === 1) {
+    if (stars === 3 && misses === 0) {
       flavor = "Un colpo d'orecchio prodigioso! Avete trovato la Campana al primo tentativo. L'Altissimo guida la vostra mano.";
-    } else if (checkedCount <= 3) {
-      flavor = "Pochi tentativi: l'orecchio del frate è acuto come quello di una volpe del bosco.";
-    } else if (checkedCount <= 6) {
+    } else if (stars === 3) {
+      flavor = "Velocità e perizia degne di un investigatore esperto. La Campana è tornata a casa.";
+    } else if (stars === 2) {
       flavor = "Con pazienza monastica avete trovato la verità tra il silenzio del bronzo.";
-    } else {
+    } else if (stars === 1) {
       flavor = "Una ricerca lunga, ma la perseveranza è virtù dei santi. La Campana è salva.";
+    } else {
+      flavor = "La Campana è stata trovata, ma a fatica. Il prossimo tentativo, fratello, sarà più lesto.";
     }
     document.getElementById('victoryText').textContent = flavor;
     victory.classList.add('show');
@@ -2105,31 +2300,29 @@
     const dx = hereticX - friarWorldX;
     const absDx = Math.abs(dx);
     const sameLevel = Math.abs(friarWorldY - hereticY) < 60;
-    const inEncounterRange = !friarIsJumping && sameLevel && absDx <= ENCOUNTER_DIST;
+    // Encounter only fires if not in cooldown (post-stun separation period)
+    const inEncounterRange = !friarIsJumping && !encounterCooldown
+                              && sameLevel && absDx <= ENCOUNTER_DIST;
 
     // === Stun lifecycle ===
     if (friarStunned) {
       // We're currently in the stun window: BOTH are frozen no matter what.
-      // Don't move the heretic. Don't allow the friar to do anything.
       if (now >= stunEndsAt) {
-        // Stun ends — release both
+        // Stun ends — release both, free the friar to move in ANY direction.
+        // We don't push anyone or auto-resume any movement. The friar is fully
+        // free; the heretic resumes his patrol normally. We just suppress further
+        // encounter detection until they actually separate (cooldown).
         friarStunned = false;
         hereticFrozen = false;
         hereticBlocked = false;
+        encounterCooldown = true;       // suppress immediate re-trigger
+        friarTargetX = null;            // don't auto-walk anywhere; player chooses
+        friarTargetY = null;
         friar.classList.remove('stunned');
         const body = heretic.querySelector('.heretic-body');
         if (body) body.style.animationPlayState = '';
         swipeHint.classList.remove('show');
-        // Push the heretic AWAY from the friar so they don't immediately re-collide
-        hereticDir = (friarWorldX > hereticX) ? -1 : 1;
-        // Clear the friar's pending target so a tap is required to resume movement.
-        // (Per spec: dopo lo stun il frate è libero ma non riparte da solo se ha un target salvato)
-        // Actually we DO want to resume — comment out if you prefer manual restart:
-        if (friarTargetX !== null && Math.abs(friarTargetX - friarWorldX) > 10) {
-          // Only resume if heretic is no longer blocking after the push
-          // We'll let the next tick decide; first nudge the heretic a bit
-          hereticX += hereticDir * 5;
-        }
+        updateNarrative("Lo stordimento svanisce. Frate Anselmo è di nuovo libero di muoversi.");
       }
       // Heretic keeps facing the friar during stun
       if (dx > 0) heretic.classList.remove('flip-x');
@@ -2154,7 +2347,6 @@
       // Face each other
       if (dx > 0) heretic.classList.remove('flip-x');
       else heretic.classList.add('flip-x');
-      // Friar faces the heretic
       if (dx > 0) friar.classList.remove('flip-x');
       else friar.classList.add('flip-x');
       // Play the encounter audio
@@ -2167,6 +2359,11 @@
     }
 
     // === Normal patrol (no encounter, no stun) ===
+    // Lift the cooldown once the two are far enough apart
+    if (encounterCooldown && absDx > COOLDOWN_DIST) {
+      encounterCooldown = false;
+    }
+
     hereticX += hereticDir * hereticSpeed * dt;
     if (hereticX <= hereticZoneStart) {
       hereticX = hereticZoneStart;
@@ -2355,6 +2552,7 @@
       // Jump interrupts the stun!
       friarStunned = false;
       stunEndsAt = 0;
+      encounterCooldown = true;        // prevent immediate re-trigger after landing
       // Stop the heretic audio if still playing
       stopHereticAudio();
       // Unfreeze the heretic — he resumes patrol, walking AWAY from the friar
@@ -2417,6 +2615,7 @@
     friarIsJumping = false;
     friarStunned = false;
     stunEndsAt = 0;
+    encounterCooldown = false;
     hereticBlocked = false;
     hereticFrozen = false;
     if (hereticAudio) {
@@ -2436,6 +2635,7 @@
     createBells();
     setupHeretic();
     updateNarrative("Frate Anselmo riprende la ricerca. Dieci campane attendono il tocco della verità... ma attenti: un eretico vaga nei chiostri.");
+    startTimer();
   }
 
   // ============== INIT ==============
